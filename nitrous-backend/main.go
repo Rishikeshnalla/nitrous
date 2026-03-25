@@ -45,9 +45,9 @@ func main() {
 			events.GET("", handlers.GetEvents)
 			events.GET("/live", handlers.GetLiveEvents)
 			events.GET("/:id", handlers.GetEventByID)
-			events.POST("", middleware.AuthMiddleware(), handlers.CreateEvent)
-			events.PUT("/:id", middleware.AuthMiddleware(), handlers.UpdateEvent)
-			events.DELETE("/:id", middleware.AuthMiddleware(), handlers.DeleteEvent)
+			events.POST("", middleware.AuthMiddleware(), middleware.AdminMiddleware(), handlers.CreateEvent)
+			events.PUT("/:id", middleware.AuthMiddleware(), middleware.AdminMiddleware(), handlers.UpdateEvent)
+			events.DELETE("/:id", middleware.AuthMiddleware(), middleware.AdminMiddleware(), handlers.DeleteEvent)
 		}
 
 		// Categories
@@ -55,6 +55,9 @@ func main() {
 		{
 			categories.GET("", handlers.GetCategories)
 			categories.GET("/:slug", handlers.GetCategoryBySlug)
+			categories.POST("", middleware.AuthMiddleware(), middleware.AdminMiddleware(), handlers.CreateCategory)
+			categories.PUT("/:slug", middleware.AuthMiddleware(), middleware.AdminMiddleware(), handlers.UpdateCategory)
+			categories.DELETE("/:slug", middleware.AuthMiddleware(), middleware.AdminMiddleware(), handlers.DeleteCategory)
 		}
 
 		// Journeys
@@ -62,6 +65,9 @@ func main() {
 		{
 			journeys.GET("", handlers.GetJourneys)
 			journeys.GET("/:id", handlers.GetJourneyByID)
+			journeys.POST("", middleware.AuthMiddleware(), middleware.AdminMiddleware(), handlers.CreateJourney)
+			journeys.PUT("/:id", middleware.AuthMiddleware(), middleware.AdminMiddleware(), handlers.UpdateJourney)
+			journeys.DELETE("/:id", middleware.AuthMiddleware(), middleware.AdminMiddleware(), handlers.DeleteJourney)
 			journeys.POST("/:id/book", middleware.AuthMiddleware(), handlers.BookJourney)
 		}
 
@@ -77,6 +83,9 @@ func main() {
 		{
 			teams.GET("", handlers.GetTeams)
 			teams.GET("/:id", handlers.GetTeamByID)
+			teams.POST("", middleware.AuthMiddleware(), middleware.AdminMiddleware(), handlers.CreateTeam)
+			teams.PUT("/:id", middleware.AuthMiddleware(), middleware.AdminMiddleware(), handlers.UpdateTeam)
+			teams.DELETE("/:id", middleware.AuthMiddleware(), middleware.AdminMiddleware(), handlers.DeleteTeam)
 			teams.POST("/:id/follow", middleware.AuthMiddleware(), handlers.FollowTeam)
 			teams.POST("/:id/unfollow", middleware.AuthMiddleware(), handlers.UnfollowTeam)
 		}
@@ -86,6 +95,9 @@ func main() {
 		{
 			streams.GET("", handlers.GetStreams)
 			streams.GET("/:id", handlers.GetStreamByID)
+			streams.POST("", middleware.AuthMiddleware(), middleware.AdminMiddleware(), handlers.CreateStream)
+			streams.PUT("/:id", middleware.AuthMiddleware(), middleware.AdminMiddleware(), handlers.UpdateStream)
+			streams.DELETE("/:id", middleware.AuthMiddleware(), middleware.AdminMiddleware(), handlers.DeleteStream)
 			streams.GET("/ws", handlers.StreamsWS)
 		}
 

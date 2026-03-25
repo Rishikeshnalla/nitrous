@@ -3,8 +3,11 @@ package handlers
 import (
 	"net/http"
 	"nitrous-backend/database"
+	"nitrous-backend/models"
+	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 )
 
 // GetTeams returns all teams
@@ -22,6 +25,64 @@ func GetTeamByID(c *gin.Context) {
 	for _, team := range database.Teams {
 		if team.ID == id {
 			c.JSON(http.StatusOK, team)
+			return
+		}
+	}
+
+	c.JSON(http.StatusNotFound, gin.H{"error": "Team not found"})
+}
+
+// CreateTeam creates a new team (admin only)
+func CreateTeam(c *gin.Context) {
+	var team models.Team
+
+	if err := c.ShouldBindJSON(&team); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	team.ID = uuid.New().String()
+	team.CreatedAt = time.Now()
+	team.Followers = []string{}
+	team.FollowersCount = 0
+
+	database.Teams = append(database.Teams, team)
+	c.JSON(http.StatusCreated, team)
+}
+
+// UpdateTeam updates an existing team (admin only)
+func UpdateTeam(c *gin.Context) {
+	id := c.Param("id")
+
+	var updated models.Team
+	if err := c.ShouldBindJSON(&updated); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	for i, team := range database.Teams {
+		if team.ID == id {
+			updated.ID = id
+			updated.CreatedAt = team.CreatedAt
+			updated.Followers = team.Followers
+			updated.FollowersCount = team.FollowersCount
+			database.Teams[i] = updated
+			c.JSON(http.StatusOK, updated)
+			return
+		}
+	}
+
+	c.JSON(http.StatusNotFound, gin.H{"error": "Team not found"})
+}
+
+// DeleteTeam deletes a team (admin only)
+func DeleteTeam(c *gin.Context) {
+	id := c.Param("id")
+
+	for i, team := range database.Teams {
+		if team.ID == id {
+			database.Teams = append(database.Teams[:i], database.Teams[i+1:]...)
+			c.JSON(http.StatusOK, gin.H{"message": "Team deleted"})
 			return
 		}
 	}

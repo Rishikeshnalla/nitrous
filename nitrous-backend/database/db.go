@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"golang.org/x/crypto/bcrypt"
 )
 
 // In-memory storage for prototype
@@ -25,6 +26,7 @@ func InitDB() {
 	log.Println("Initializing in-memory database...")
 
 	// Seed data
+	seedUsers()
 	seedEvents()
 	seedCategories()
 	seedJourneys()
@@ -34,6 +36,26 @@ func InitDB() {
 	seedOrders()
 
 	log.Println("✓ Database initialized with seed data")
+}
+
+func seedUsers() {
+	passwordHash, err := bcrypt.GenerateFromPassword([]byte("admin12345"), bcrypt.DefaultCost)
+	if err != nil {
+		log.Printf("failed to seed admin user password hash: %v", err)
+		Users = []models.User{}
+		return
+	}
+
+	Users = []models.User{
+		{
+			ID:           uuid.New().String(),
+			Email:        "admin@nitrous.local",
+			PasswordHash: string(passwordHash),
+			Role:         "admin",
+			Name:         "Nitrous Admin",
+			CreatedAt:    time.Now(),
+		},
+	}
 }
 
 func seedReminders() {

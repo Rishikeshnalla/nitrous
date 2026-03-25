@@ -41,6 +41,7 @@ func Register(c *gin.Context) {
 		ID:           uuid.New().String(),
 		Email:        req.Email,
 		PasswordHash: string(hashedPassword),
+		Role:         "user",
 		Name:         req.Name,
 		CreatedAt:    time.Now(),
 	}

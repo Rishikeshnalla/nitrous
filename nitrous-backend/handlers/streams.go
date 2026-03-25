@@ -88,6 +88,56 @@ func GetStreamByID(c *gin.Context) {
 	c.JSON(http.StatusNotFound, gin.H{"error": "Stream not found"})
 }
 
+// CreateStream creates a new stream feed (admin only).
+func CreateStream(c *gin.Context) {
+	var stream Stream
+
+	if err := c.ShouldBindJSON(&stream); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	streams = append(streams, stream)
+	c.JSON(http.StatusCreated, stream)
+}
+
+// UpdateStream updates an existing stream feed (admin only).
+func UpdateStream(c *gin.Context) {
+	id := c.Param("id")
+
+	var updated Stream
+	if err := c.ShouldBindJSON(&updated); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	for i, stream := range streams {
+		if stream.ID == id {
+			updated.ID = id
+			streams[i] = updated
+			c.JSON(http.StatusOK, updated)
+			return
+		}
+	}
+
+	c.JSON(http.StatusNotFound, gin.H{"error": "Stream not found"})
+}
+
+// DeleteStream deletes a stream feed (admin only).
+func DeleteStream(c *gin.Context) {
+	id := c.Param("id")
+
+	for i, stream := range streams {
+		if stream.ID == id {
+			streams = append(streams[:i], streams[i+1:]...)
+			c.JSON(http.StatusOK, gin.H{"message": "Stream deleted"})
+			return
+		}
+	}
+
+	c.JSON(http.StatusNotFound, gin.H{"error": "Stream not found"})
+}
+
 // StreamsWS upgrades the request to websocket and registers the client to telemetry updates.
 func StreamsWS(c *gin.Context) {
 	ensureHubRunning()
