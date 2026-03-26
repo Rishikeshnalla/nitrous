@@ -12,7 +12,7 @@ export const events: Event[] = [
   {
     id: '2',
     title: 'Dakar Rally — Stage 9',
-    location: "Al Ula → Ha'il · Saudi Arabia",
+    location: 'Al Ula → Ha'il · Saudi Arabia',
     date: 'Feb 10, 2026',
     time: '09:00 UTC',
     isLive: false,
@@ -119,7 +119,7 @@ export const journeys: Journey[] = [
     id: '3',
     title: 'RED BULL TANDEM SKYDIVE',
     category: 'AIR · EXTREME SPORT',
-    description: "Jump with a Red Bull certified instructor at 15,000ft. Camera-equipped, full debrief, and a story you'll never forget.",
+    description: 'Jump with a Red Bull certified instructor at 15,000ft. Camera-equipped, full debrief, and a story you'll never forget.',
     badge: 'LIMITED',
     slotsLeft: 3,
     date: 'Mar 8, 2026',
