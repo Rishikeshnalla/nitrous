@@ -1,243 +1,316 @@
 'use client'
-import { useState, useEffect, useRef } from 'react'
+
+import { useState, useEffect, useRef, useCallback } from 'react'
 import Nav from '@/components/Nav'
 import styles from './garage.module.css'
 
-// ── Static car database ───────────────────────────────────────────────────────
-const CAR_DATABASE = [
-  {
-    id: 'f40',
-    make: 'Ferrari',
-    model: 'F40',
-    year: 1992,
-    category: 'SUPERCAR',
-    color: 'red',
-    icon: '🏎️',
-    base: {
-      hp: 478, torque: 426, topSpeed: 201, zeroToSixty: 3.8,
-      weight: 2425, engine: 'Twin-Turbo V8 2.9L', drivetrain: 'RWD', displacement: 2936,
-    },
-  },
-  {
-    id: 'gt3rs',
-    make: 'Porsche',
-    model: '911 GT3 RS',
-    year: 2024,
-    category: 'TRACK',
-    color: 'orange',
-    icon: '🔶',
-    base: {
-      hp: 518, torque: 343, topSpeed: 184, zeroToSixty: 3.0,
-      weight: 3042, engine: 'Flat-6 4.0L NA', drivetrain: 'RWD', displacement: 3996,
-    },
-  },
-  {
-    id: 'r35',
-    make: 'Nissan',
-    model: 'GT-R R35',
-    year: 2023,
-    category: 'SPORTS',
-    color: 'cyan',
-    icon: '⚡',
-    base: {
-      hp: 565, torque: 467, topSpeed: 196, zeroToSixty: 2.9,
-      weight: 3960, engine: 'Twin-Turbo V6 3.8L', drivetrain: 'AWD', displacement: 3799,
-    },
-  },
-  {
-    id: 'huracan',
-    make: 'Lamborghini',
-    model: 'Huracán EVO',
-    year: 2023,
-    category: 'SUPERCAR',
-    color: 'gold',
-    icon: '🐂',
-    base: {
-      hp: 630, torque: 443, topSpeed: 202, zeroToSixty: 2.9,
-      weight: 3135, engine: 'NA V10 5.2L', drivetrain: 'AWD', displacement: 5204,
-    },
-  },
-  {
-    id: 'supra',
-    make: 'Toyota',
-    model: 'GR Supra',
-    year: 2024,
-    category: 'SPORTS',
-    color: 'blue',
-    icon: '🌀',
-    base: {
-      hp: 382, torque: 368, topSpeed: 155, zeroToSixty: 3.9,
-      weight: 3400, engine: 'Turbo I6 3.0L', drivetrain: 'RWD', displacement: 2998,
-    },
-  },
-  {
-    id: 'evora',
-    make: 'Lotus',
-    model: 'Evora GT',
-    year: 2022,
-    category: 'TRACK',
-    color: 'purple',
-    icon: '🍃',
-    base: {
-      hp: 416, torque: 317, topSpeed: 188, zeroToSixty: 3.8,
-      weight: 3043, engine: 'S/C V6 3.5L', drivetrain: 'RWD', displacement: 3456,
-    },
-  },
+// ── Types ─────────────────────────────────────────────────────────────────────
+
+interface VehicleSpec {
+  make: string
+  model: string
+  year: number
+  trim: string
+  engine: string
+  displacement: number
+  cylinders: number
+  hp: number
+  torque: number
+  topSpeed: number
+  weight: number
+  zeroToSixty: number
+  drivetrain: string
+  fuelType: string
+  seats: number
+}
+
+interface TunedStats {
+  hp: number
+  torque: number
+  topSpeed: number
+  zeroToSixty: number
+  weight: number
+  config: string
+}
+
+interface TuneResponse {
+  base: VehicleSpec
+  tuned: TunedStats
+  delta: { hp: number; torque: number; topSpeed: number; zeroToSixty: number; weight: number }
+  config: TuningConfig
+}
+
+interface TuningConfig {
+  label: string
+  hpMult: number
+  torqueMult: number
+  topSpeedMult: number
+  zeroMult: number
+  weightMult: number
+}
+
+interface CarEntry {
+  make: string
+  model: string
+  year: number
+  category: string
+  icon: string
+  accentColor: string
+  // populated after API fetch
+  spec?: VehicleSpec
+}
+
+// ── Constants ─────────────────────────────────────────────────────────────────
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8080'
+
+// Hero cars shown in the sidebar. Specs are lazy-fetched from the Go backend.
+const HERO_CARS: CarEntry[] = [
+  { make: 'Ferrari',     model: 'F40',         year: 1992, category: 'SUPERCAR', icon: '🏎️', accentColor: '#ff2a2a' },
+  { make: 'Porsche',     model: '911 GT3 RS',  year: 2024, category: 'TRACK',    icon: '🔶', accentColor: '#fb923c' },
+  { make: 'Nissan',      model: 'GT-R',        year: 2023, category: 'SPORTS',   icon: '⚡', accentColor: '#00e5ff' },
+  { make: 'Lamborghini', model: 'Huracan Evo', year: 2023, category: 'SUPERCAR', icon: '🐂', accentColor: '#facc15' },
+  { make: 'Toyota',      model: 'GR Supra',    year: 2024, category: 'SPORTS',   icon: '🌀', accentColor: '#60a5fa' },
+  { make: 'Lotus',       model: 'Evora GT',    year: 2022, category: 'TRACK',    icon: '🍃', accentColor: '#a78bfa' },
 ]
 
-const TUNING_CONFIGS: Record<string, { label: string; short: string; hpMult: number; weightMult: number; topSpeedMult: number; zeroMult: number; torqueMult: number }> = {
-  stock:  { label: 'STOCK',      short: 'STOCK',  hpMult: 1.00, weightMult: 1.00, topSpeedMult: 1.00, zeroMult: 1.00, torqueMult: 1.00 },
-  street: { label: 'STREET',     short: 'STREET', hpMult: 1.08, weightMult: 0.97, topSpeedMult: 1.04, zeroMult: 0.95, torqueMult: 1.06 },
-  track:  { label: 'TRACK',      short: 'TRACK',  hpMult: 1.18, weightMult: 0.90, topSpeedMult: 1.10, zeroMult: 0.86, torqueMult: 1.12 },
-  race:   { label: 'RACE SPEC',  short: 'RACE',   hpMult: 1.35, weightMult: 0.82, topSpeedMult: 1.18, zeroMult: 0.76, torqueMult: 1.25 },
-  drift:  { label: 'DRIFT',      short: 'DRIFT',  hpMult: 1.20, weightMult: 0.94, topSpeedMult: 0.96, zeroMult: 0.92, torqueMult: 1.30 },
+const TUNING_KEYS = ['stock', 'street', 'track', 'race', 'drift'] as const
+type TuningKey = typeof TUNING_KEYS[number]
+
+const TUNING_LABELS: Record<TuningKey, string> = {
+  stock: 'STOCK', street: 'STREET', track: 'TRACK', race: 'RACE SPEC', drift: 'DRIFT',
 }
 
-const colorMap: Record<string, string> = {
-  red:    '#ff2a2a',
-  cyan:   '#00e5ff',
-  orange: '#fb923c',
-  blue:   '#60a5fa',
-  purple: '#a78bfa',
-  gold:   '#facc15',
+// Client-side multipliers — mirrors Go backend, used for instant UI response
+// while the real tune POST resolves in the background.
+const LOCAL_TUNING: Record<TuningKey, TuningConfig> = {
+  stock:  { label: 'Stock',     hpMult: 1.00, torqueMult: 1.00, topSpeedMult: 1.00, zeroMult: 1.00, weightMult: 1.00 },
+  street: { label: 'Street',    hpMult: 1.08, torqueMult: 1.06, topSpeedMult: 1.04, zeroMult: 0.95, weightMult: 0.97 },
+  track:  { label: 'Track',     hpMult: 1.18, torqueMult: 1.12, topSpeedMult: 1.10, zeroMult: 0.86, weightMult: 0.90 },
+  race:   { label: 'Race Spec', hpMult: 1.35, torqueMult: 1.25, topSpeedMult: 1.18, zeroMult: 0.76, weightMult: 0.82 },
+  drift:  { label: 'Drift',     hpMult: 1.20, torqueMult: 1.30, topSpeedMult: 0.96, zeroMult: 0.92, weightMult: 0.94 },
 }
 
-function StatBar({ label, value, max, color }: { label: string; value: number; max: number; color: string }) {
+// ── API helpers ───────────────────────────────────────────────────────────────
+
+async function fetchVehicle(make: string, model: string, year: number): Promise<VehicleSpec | null> {
+  try {
+    const res = await fetch(
+      `${API_BASE}/api/garage/vehicle?make=${encodeURIComponent(make)}&model=${encodeURIComponent(model)}&year=${year}`
+    )
+    if (!res.ok) return null
+    const data = await res.json()
+    return data.vehicle ?? null
+  } catch {
+    return null
+  }
+}
+
+async function postTune(make: string, model: string, year: number, tuning: TuningKey): Promise<TuneResponse | null> {
+  try {
+    const res = await fetch(`${API_BASE}/api/garage/tune`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ make, model, year, tuning }),
+    })
+    if (!res.ok) return null
+    return await res.json()
+  } catch {
+    return null
+  }
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function localTune(spec: VehicleSpec, key: TuningKey) {
+  const cfg = LOCAL_TUNING[key]
+  return {
+    hp:          Math.round(spec.hp * cfg.hpMult),
+    torque:      Math.round(spec.torque * cfg.torqueMult),
+    topSpeed:    Math.round(spec.topSpeed * cfg.topSpeedMult),
+    zeroToSixty: +(spec.zeroToSixty * cfg.zeroMult).toFixed(1),
+    weight:      Math.round(spec.weight * cfg.weightMult),
+  }
+}
+
+// ── Sub-components ────────────────────────────────────────────────────────────
+
+function StatBar({ label, value, max, accent }: { label: string; value: number; max: number; accent: string }) {
   const pct = Math.min((value / max) * 100, 100)
   return (
     <div className={styles.statRow}>
-      <span className={styles.statLabel}>{label}</span>
-      <div className={styles.statBarWrap}>
+      <span className={styles.statKey}>{label}</span>
+      <div className={styles.barWrap}>
         <div
-          className={styles.statBarFill}
-          style={{ width: `${pct}%`, background: color, boxShadow: `0 0 10px ${color}88` }}
+          className={styles.barFill}
+          style={{ width: `${pct}%`, background: accent, boxShadow: `0 0 8px ${accent}55` }}
         />
       </div>
-      <span className={styles.statVal}>{Math.round(value)}</span>
+      <span className={styles.statNum}>{value.toLocaleString()}</span>
     </div>
   )
 }
 
+// ── Main page ─────────────────────────────────────────────────────────────────
+
 export default function GaragePage() {
-  const [selectedCar, setSelectedCar] = useState(CAR_DATABASE[0])
-  const [tuning, setTuning] = useState('stock')
-  const [scanLine, setScanLine] = useState(0)
+  const [cars, setCars]           = useState<CarEntry[]>(HERO_CARS)
+  const [selected, setSelected]   = useState<CarEntry>(HERO_CARS[0])
+  const [spec, setSpec]           = useState<VehicleSpec | null>(null)
+  const [tuning, setTuning]       = useState<TuningKey>('stock')
+  const [tuneResult, setTuneResult] = useState<TuneResponse | null>(null)
+  const [loadingSpec, setLoadingSpec] = useState(false)
+  const [search, setSearch]       = useState('')
   const canvasRef = useRef<HTMLCanvasElement>(null)
+  const scanRef   = useRef<number>(0)
+  const rafRef    = useRef<number>(0)
 
-  const cfg = TUNING_CONFIGS[tuning]
-  const stats = {
-    hp:          Math.round(selectedCar.base.hp * cfg.hpMult),
-    torque:      Math.round(selectedCar.base.torque * cfg.torqueMult),
-    topSpeed:    Math.round(selectedCar.base.topSpeed * cfg.topSpeedMult),
-    zeroToSixty: +(selectedCar.base.zeroToSixty * cfg.zeroMult).toFixed(1),
-    weight:      Math.round(selectedCar.base.weight * cfg.weightMult),
-  }
+  const accent = selected.accentColor
 
-  const accent = colorMap[selectedCar.color] ?? '#00e5ff'
-
-  const handleCarSelect = (car: typeof CAR_DATABASE[0]) => {
-    setSelectedCar(car)
-  }
-
-  // Scan line animation
+  // ── Fetch spec when car changes ──────────────────────────────────────────
   useEffect(() => {
-    let alive = true
-    const interval = setInterval(() => {
-      if (alive) setScanLine(p => (p + 2) % 100)
-    }, 30)
-    return () => {
-      alive = false
-      clearInterval(interval)
-    }
-  }, [])
+    let cancelled = false
+    setSpec(null)
+    setTuneResult(null)
+    setLoadingSpec(true)
 
-  // Draw Tron grid on canvas
+    fetchVehicle(selected.make, selected.model, selected.year).then(v => {
+      if (cancelled) return
+      setSpec(v)
+      setLoadingSpec(false)
+    })
+
+    return () => { cancelled = true }
+  }, [selected])
+
+  // ── Re-tune when tuning or spec changes ─────────────────────────────────
   useEffect(() => {
+    if (!spec || tuning === 'stock') { setTuneResult(null); return }
+    let cancelled = false
+
+    postTune(selected.make, selected.model, selected.year, tuning).then(r => {
+      if (!cancelled) setTuneResult(r)
+    })
+
+    return () => { cancelled = true }
+  }, [spec, tuning, selected])
+
+  // ── Canvas grid ──────────────────────────────────────────────────────────
+  const drawGrid = useCallback(() => {
     const canvas = canvasRef.current
     if (!canvas) return
     const ctx = canvas.getContext('2d')
     if (!ctx) return
 
-    let alive = true
+    const W = canvas.offsetWidth
+    const H = canvas.offsetHeight
+    if (!W || !H) return
+    canvas.width  = W
+    canvas.height = H
 
-    const w = canvas.offsetWidth
-    const h = canvas.offsetHeight
-    if (!w || !h) return
+    ctx.clearRect(0, 0, W, H)
+    const g = 38
 
-    canvas.width  = w
-    canvas.height = h
-
-    if (!alive) return
-    ctx.clearRect(0, 0, canvas.width, canvas.height)
-
-    const gridSize   = 40
-    const accentHex  = accent.startsWith('var') ? '#00e5ff' : accent
-
-    // Flat grid
-    ctx.strokeStyle = `${accentHex}20`
+    ctx.strokeStyle = accent + '18'
     ctx.lineWidth   = 0.5
-    for (let x = 0; x <= canvas.width; x += gridSize) {
-      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); ctx.stroke()
+    for (let x = 0; x <= W; x += g) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke() }
+    for (let y = 0; y <= H; y += g) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke() }
+
+    const hor = H * 0.52
+    const vpx = W / 2
+
+    ctx.strokeStyle = accent + '30'
+    ctx.lineWidth   = 0.8
+    for (let i = -14; i <= 14; i++) {
+      const x = vpx + i * 58
+      ctx.beginPath(); ctx.moveTo(vpx, hor); ctx.lineTo(x, H); ctx.stroke()
     }
-    for (let y = 0; y <= canvas.height; y += gridSize) {
-      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke()
+    for (let i = 0; i <= 10; i++) {
+      const t = i / 10
+      const y = hor + (H - hor) * t
+      const s = t * W * 0.9
+      ctx.beginPath(); ctx.moveTo(vpx - s / 2, y); ctx.lineTo(vpx + s / 2, y); ctx.stroke()
     }
 
-    // Horizon glow — stronger
-    const gradient = ctx.createRadialGradient(
-      canvas.width / 2, canvas.height * 0.65, 0,
-      canvas.width / 2, canvas.height * 0.65, canvas.width * 0.55
-    )
-    gradient.addColorStop(0, `${accentHex}28`)
-    gradient.addColorStop(1, 'transparent')
-    ctx.fillStyle = gradient
-    ctx.fillRect(0, 0, canvas.width, canvas.height)
+    const gr = ctx.createRadialGradient(vpx, H * 0.6, 0, vpx, H * 0.6, W * 0.5)
+    gr.addColorStop(0, accent + '1a')
+    gr.addColorStop(1, 'transparent')
+    ctx.fillStyle = gr
+    ctx.fillRect(0, 0, W, H)
+  }, [accent])
 
-    // Perspective lines — stronger opacity
-    ctx.strokeStyle = `${accentHex}45`
-    ctx.lineWidth   = 1
-    const horizon   = canvas.height * 0.52
-    const vp        = { x: canvas.width / 2, y: horizon }
-    for (let i = -10; i <= 10; i++) {
-      const x = canvas.width / 2 + i * 75
-      ctx.beginPath(); ctx.moveTo(vp.x, vp.y); ctx.lineTo(x, canvas.height); ctx.stroke()
-    }
-    for (let i = 0; i <= 8; i++) {
-      const t      = i / 8
-      const y      = horizon + (canvas.height - horizon) * t
-      const spread = t * canvas.width * 0.9
-      ctx.beginPath(); ctx.moveTo(vp.x - spread / 2, y); ctx.lineTo(vp.x + spread / 2, y); ctx.stroke()
-    }
+  useEffect(() => { drawGrid() }, [drawGrid])
+  useEffect(() => {
+    const ro = new ResizeObserver(drawGrid)
+    if (canvasRef.current) ro.observe(canvasRef.current.parentElement!)
+    return () => ro.disconnect()
+  }, [drawGrid])
 
-    return () => { alive = false }
-  }, [selectedCar, accent])
+  // ── Scan line animation ──────────────────────────────────────────────────
+  useEffect(() => {
+    const tick = () => {
+      scanRef.current = (scanRef.current + 0.35) % 100
+      const el = document.getElementById('scan-line')
+      if (el) el.style.top = scanRef.current + '%'
+      rafRef.current = requestAnimationFrame(tick)
+    }
+    rafRef.current = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(rafRef.current)
+  }, [])
+
+  // ── Derived display values ───────────────────────────────────────────────
+  const displaySpec = spec ?? {
+    hp: 0, torque: 0, topSpeed: 0, zeroToSixty: 0, weight: 0,
+    engine: '—', drivetrain: '—', displacement: 0,
+  }
+
+  const tuned = spec
+    ? (tuneResult
+        ? tuneResult.tuned
+        : localTune(spec as VehicleSpec, tuning))
+    : null
+
+  const activeHP    = tuned?.hp    ?? displaySpec.hp
+  const activeTorq  = tuned?.torque ?? displaySpec.torque
+  const activeSpd   = tuned?.topSpeed ?? displaySpec.topSpeed
+  const activeZero  = tuned?.zeroToSixty ?? displaySpec.zeroToSixty
+  const activeWt    = tuned?.weight  ?? displaySpec.weight
+
+  const delta = tuneResult?.delta ?? null
+
+  const filtered = search
+    ? cars.filter(c =>
+        c.make.toLowerCase().includes(search.toLowerCase()) ||
+        c.model.toLowerCase().includes(search.toLowerCase()))
+    : cars
 
   return (
     <>
       <Nav />
       <main className={styles.page}>
 
-        {/* ── Sub-header strip (replaces the overlapping pageTitle) ── */}
+        {/* ── Sub-header ── */}
         <div className={styles.subHeader}>
           <div className={styles.subHeaderLeft}>
             <span className={styles.breadcrumb}>/ GARAGE</span>
             <span className={styles.subHeaderCar} style={{ color: accent }}>
-              {selectedCar.make.toUpperCase()} {selectedCar.model.toUpperCase()}
+              {selected.make.toUpperCase()} {selected.model.toUpperCase()}
             </span>
+            {loadingSpec && <span className={styles.loadingPip} style={{ background: accent }} />}
           </div>
           <div className={styles.headerStats}>
             <div className={styles.hStat}>
-              <span className={styles.hStatN}>{CAR_DATABASE.length}</span>
+              <span className={styles.hStatN}>{HERO_CARS.length}</span>
               <span className={styles.hStatL}>VEHICLES</span>
             </div>
             <div className={styles.hStatDiv} />
             <div className={styles.hStat}>
-              <span className={styles.hStatN}>{Object.keys(TUNING_CONFIGS).length}</span>
+              <span className={styles.hStatN}>{TUNING_KEYS.length}</span>
               <span className={styles.hStatL}>CONFIGS</span>
             </div>
             <div className={styles.hStatDiv} />
             <div className={styles.hStat}>
-              <span className={styles.hStatN} style={{ color: accent }}>{stats.hp}</span>
+              <span className={styles.hStatN} style={{ color: accent }}>{activeHP || '—'}</span>
               <span className={styles.hStatL}>ACTIVE HP</span>
             </div>
           </div>
@@ -248,180 +321,190 @@ export default function GaragePage() {
           {/* ── LEFT: Car selector ── */}
           <div className={styles.selectorPanel}>
             <div className={styles.panelLabel}>SELECT VEHICLE</div>
-            {CAR_DATABASE.map((car) => {
-              const a       = colorMap[car.color] ?? '#00e5ff'
-              const isActive = car.id === selectedCar.id
-              return (
-                <div
-                  key={car.id}
-                  className={`${styles.carSlot} ${isActive ? styles.carSlotActive : ''}`}
-                  style={isActive ? { borderColor: a, background: `${a}12` } : {}}
-                  onClick={() => handleCarSelect(car)}
-                >
-                  {isActive && (
-                    <div className={styles.carSlotAccent} style={{ background: a, boxShadow: `0 0 12px ${a}` }} />
-                  )}
-                  <span className={styles.carSlotIcon}>{car.icon}</span>
-                  <div className={styles.carSlotInfo}>
-                    <div className={styles.carSlotMake}>{car.make}</div>
-                    <div className={styles.carSlotModel}>{car.model}</div>
-                    <div className={styles.carSlotYear}>{car.year}</div>
-                  </div>
+            <div className={styles.searchWrap}>
+              <input
+                className={styles.searchInput}
+                type="text"
+                placeholder="Search make or model…"
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+              />
+            </div>
+            <div className={styles.carList}>
+              {filtered.map(car => {
+                const isActive = car === selected
+                const a = car.accentColor
+                return (
                   <div
-                    className={styles.carSlotBadge}
-                    style={{ color: a, borderColor: `${a}55`, background: `${a}10` }}
+                    key={`${car.make}-${car.model}-${car.year}`}
+                    className={`${styles.carSlot} ${isActive ? styles.carSlotActive : ''}`}
+                    style={isActive ? { borderColor: `${a}60`, background: `${a}0d` } : {}}
+                    onClick={() => { setSelected(car); setTuning('stock') }}
                   >
-                    {car.category}
+                    {isActive && (
+                      <div className={styles.carSlotAccentBar} style={{ background: a, boxShadow: `0 0 10px ${a}` }} />
+                    )}
+                    <span className={styles.carSlotIcon}>{car.icon}</span>
+                    <div className={styles.carSlotInfo}>
+                      <div className={styles.carSlotMake}>{car.make}</div>
+                      <div className={styles.carSlotModel}>{car.model}</div>
+                      <div className={styles.carSlotYear}>{car.year}</div>
+                    </div>
+                    <div
+                      className={styles.catBadge}
+                      style={{ color: a, borderColor: `${a}44`, background: `${a}12` }}
+                    >
+                      {car.category}
+                    </div>
                   </div>
-                </div>
-              )
-            })}
+                )
+              })}
+            </div>
           </div>
 
-          {/* ── CENTER: Viewport + HUD ── */}
+          {/* ── CENTER: Viewport ── */}
           <div className={styles.viewportPanel}>
             <div className={styles.viewport}>
               <canvas ref={canvasRef} className={styles.gridCanvas} />
+              <div id="scan-line" className={styles.scanLine} style={{ background: `linear-gradient(90deg,transparent,${accent}50,transparent)` }} />
 
-              {/* Scan line */}
-              <div className={styles.scanLine} style={{ top: `${scanLine}%` }} />
-
-              {/* HUD corner brackets */}
+              {/* HUD corners */}
               {(['TL','TR','BL','BR'] as const).map(pos => (
-                <div key={pos} className={`${styles.hudCorner} ${styles[`hudCorner${pos}`]}`}>
-                  <svg viewBox="0 0 24 24" fill="none">
+                <div key={pos} className={`${styles.hudCorner} ${styles[`hudCorner${pos}` as keyof typeof styles]}`}>
+                  <svg viewBox="0 0 22 22" fill="none" width="22" height="22">
                     <path
-                      d={pos.startsWith('T') ? 'M1 23V5L5 1H23' : 'M1 1V19L5 23H23'}
-                      stroke={accent} strokeWidth="2"
+                      d={pos.startsWith('T') ? 'M1 21V4L4 1H21' : 'M1 1V18L4 21H21'}
+                      stroke={accent} strokeWidth="1.5"
                     />
                   </svg>
                 </div>
               ))}
 
+              {/* HUD overlays */}
+              <div className={styles.hudTL} style={{ color: accent }}>
+                <div className={styles.hudLine}><span className={styles.hudK}>MODEL</span><span>{selected.make} {selected.model}</span></div>
+                <div className={styles.hudLine}><span className={styles.hudK}>YEAR</span><span>{selected.year}</span></div>
+                <div className={styles.hudLine}><span className={styles.hudK}>ENGINE</span><span>{displaySpec.engine}</span></div>
+              </div>
+              <div className={styles.hudTR} style={{ color: accent }}>
+                <div className={styles.hudLine}><span>{displaySpec.drivetrain}</span><span className={styles.hudK}>DRIVE</span></div>
+                <div className={styles.hudLine}><span>{displaySpec.displacement ? `${displaySpec.displacement}cc` : '—'}</span><span className={styles.hudK}>CC</span></div>
+                <div className={styles.hudLine}><span>{TUNING_LABELS[tuning]}</span><span className={styles.hudK}>CONFIG</span></div>
+              </div>
+
               {/* Car display */}
               <div className={styles.carDisplay}>
-                <div className={styles.carGlowRing} style={{ boxShadow: `0 0 80px ${accent}55, 0 0 160px ${accent}22` }} />
-                <div className={styles.carEmoji} style={{ filter: `drop-shadow(0 0 28px ${accent})` }}>
-                  {selectedCar.icon}
+                <div className={styles.glowRing} style={{ boxShadow: `0 0 80px ${accent}44, 0 0 160px ${accent}18` }} />
+                <div className={styles.carEmoji} style={{ filter: `drop-shadow(0 0 30px ${accent})` }}>
+                  {selected.icon}
                 </div>
-                <div className={styles.carReflection} style={{ background: `radial-gradient(ellipse 60% 25% at 50% 100%, ${accent}30, transparent)` }} />
+                <div
+                  className={styles.carReflection}
+                  style={{ background: `radial-gradient(ellipse 60% 20% at 50% 100%, ${accent}28, transparent)` }}
+                />
               </div>
 
-              {/* HUD overlays */}
-              <div className={styles.hudTopLeft} style={{ color: accent }}>
-                <div className={styles.hudLine}><span className={styles.hudKey}>MODEL</span><span>{selectedCar.make} {selectedCar.model}</span></div>
-                <div className={styles.hudLine}><span className={styles.hudKey}>YEAR</span><span>{selectedCar.year}</span></div>
-                <div className={styles.hudLine}><span className={styles.hudKey}>ENGINE</span><span>{selectedCar.base.engine}</span></div>
-              </div>
-              <div className={styles.hudTopRight} style={{ color: accent }}>
-                <div className={styles.hudLine}><span className={styles.hudKey}>DRIVE</span><span>{selectedCar.base.drivetrain}</span></div>
-                <div className={styles.hudLine}><span className={styles.hudKey}>CC</span><span>{selectedCar.base.displacement}</span></div>
-                <div className={styles.hudLine}><span className={styles.hudKey}>CONFIG</span><span>{TUNING_CONFIGS[tuning].label}</span></div>
-              </div>
-
-              {/* Bottom status */}
+              {/* Status bar */}
               <div className={styles.hudBottom}>
-                <div className={styles.hudStatus}>
-                  <span className={styles.statusDot} style={{ background: accent, boxShadow: `0 0 8px ${accent}` }} />
-                  <span style={{ color: accent }}>SYSTEM ONLINE — {TUNING_CONFIGS[tuning].label}</span>
+                <span className={styles.statusDot} style={{ background: accent, boxShadow: `0 0 6px ${accent}` }} />
+                <span style={{ color: accent }}>
+                  {loadingSpec ? 'FETCHING TELEMETRY…' : `SYSTEM ONLINE — ${TUNING_LABELS[tuning]}`}
+                </span>
+              </div>
+            </div>
+
+            {/* Instruments */}
+            <div className={styles.instruments} style={{ borderColor: `${accent}25` }}>
+              {[
+                { val: activeSpd,  label: 'TOP SPEED MPH' },
+                { val: activeHP,   label: 'HORSEPOWER' },
+                { val: activeZero ? `${activeZero}s` : '—', label: '0 – 60 MPH' },
+                { val: activeWt ? activeWt.toLocaleString() : '—', label: 'WEIGHT LBS' },
+              ].map(({ val, label }) => (
+                <div key={label} className={styles.instrItem}>
+                  <span className={styles.instrVal} style={{ color: accent }}>{val || '—'}</span>
+                  <span className={styles.instrLabel}>{label}</span>
                 </div>
-              </div>
+              ))}
             </div>
 
-            {/* Instrument cluster strip */}
-            <div className={styles.instrumentStrip} style={{ borderColor: `${accent}30` }}>
-              <div className={styles.instrItem}>
-                <span className={styles.instrVal} style={{ color: accent }}>{stats.topSpeed}</span>
-                <span className={styles.instrLabel}>TOP SPEED MPH</span>
-              </div>
-              <div className={styles.instrDivider} style={{ background: `${accent}30` }} />
-              <div className={styles.instrItem}>
-                <span className={styles.instrVal} style={{ color: accent }}>{stats.hp}</span>
-                <span className={styles.instrLabel}>HORSEPOWER</span>
-              </div>
-              <div className={styles.instrDivider} style={{ background: `${accent}30` }} />
-              <div className={styles.instrItem}>
-                <span className={styles.instrVal} style={{ color: accent }}>{stats.zeroToSixty}s</span>
-                <span className={styles.instrLabel}>0 – 60 MPH</span>
-              </div>
-              <div className={styles.instrDivider} style={{ background: `${accent}30` }} />
-              <div className={styles.instrItem}>
-                <span className={styles.instrVal} style={{ color: accent }}>{stats.weight}</span>
-                <span className={styles.instrLabel}>WEIGHT LBS</span>
-              </div>
-            </div>
-
-            {/* Tuning config selector */}
+            {/* Tuning selector */}
             <div className={styles.tuningBar}>
               <span className={styles.tuningLabel}>CONFIGURATION</span>
               <div className={styles.tuningBtns}>
-                {Object.entries(TUNING_CONFIGS).map(([key, c]) => (
+                {TUNING_KEYS.map(key => (
                   <button
                     key={key}
                     className={`${styles.tuningBtn} ${tuning === key ? styles.tuningBtnActive : ''}`}
-                    style={tuning === key ? { borderColor: accent, color: accent, background: `${accent}18` } : {}}
+                    style={tuning === key ? { borderColor: accent, color: accent, background: `${accent}15` } : {}}
                     onClick={() => setTuning(key)}
                   >
-                    {c.label}
+                    {TUNING_LABELS[key]}
                   </button>
                 ))}
               </div>
             </div>
           </div>
 
-          {/* ── RIGHT: Stats panel ── */}
+          {/* ── RIGHT: Stats ── */}
           <div className={styles.statsPanel}>
             <div className={styles.panelLabel}>PERFORMANCE DATA</div>
 
             <div className={styles.statGroup}>
               <div className={styles.statGroupLabel}>POWER</div>
-              <StatBar label="HP"      value={stats.hp}     max={800} color={accent} />
-              <StatBar label="TORQUE"  value={stats.torque} max={600} color={accent} />
+              <StatBar label="HP"     value={activeHP}   max={800} accent={accent} />
+              <StatBar label="TORQUE" value={activeTorq} max={600} accent={accent} />
             </div>
 
             <div className={styles.statGroup}>
               <div className={styles.statGroupLabel}>DYNAMICS</div>
-              <StatBar label="TOP SPD" value={stats.topSpeed} max={250}  color={accent} />
-              <StatBar label="WEIGHT"  value={stats.weight}   max={5000} color={accent} />
+              <StatBar label="TOP SPD" value={activeSpd} max={250}  accent={accent} />
+              <StatBar label="WEIGHT"  value={activeWt}  max={5000} accent={accent} />
             </div>
 
             <div className={styles.statGroup}>
               <div className={styles.statGroupLabel}>ACCELERATION</div>
               <div className={styles.bigStatCard} style={{ borderColor: `${accent}30`, background: `${accent}08` }}>
-                <span className={styles.bigStatNum} style={{ color: accent }}>{stats.zeroToSixty}</span>
+                <span className={styles.bigStatNum} style={{ color: accent }}>{activeZero || '—'}</span>
                 <span className={styles.bigStatUnit}>sec 0 → 60</span>
               </div>
             </div>
 
-            {/* Config delta */}
-            {tuning !== 'stock' && (
+            {/* Delta panel — shown when tuned and backend returned exact delta */}
+            {tuning !== 'stock' && spec && (
               <div className={styles.deltaPanel}>
-                <div className={styles.deltaPanelLabel}>DELTA VS STOCK</div>
+                <div className={styles.deltaPanelLabel}>
+                  DELTA VS STOCK
+                  {!tuneResult && <span className={styles.deltaEstimate}> (est.)</span>}
+                </div>
                 <div className={styles.deltaRow}>
                   <span>POWER</span>
-                  <span style={{ color: '#4ade80' }}>+{stats.hp - selectedCar.base.hp} hp</span>
+                  <span className={styles.pos}>+{activeHP - spec.hp} hp</span>
                 </div>
                 <div className={styles.deltaRow}>
                   <span>WEIGHT</span>
-                  <span style={{ color: stats.weight < selectedCar.base.weight ? '#4ade80' : '#ff2a2a' }}>
-                    {stats.weight < selectedCar.base.weight ? '−' : '+'}{Math.abs(stats.weight - selectedCar.base.weight)} lbs
+                  <span className={activeWt < spec.weight ? styles.pos : styles.neg}>
+                    {activeWt < spec.weight ? '−' : '+'}{Math.abs(activeWt - spec.weight).toLocaleString()} lbs
                   </span>
                 </div>
                 <div className={styles.deltaRow}>
-                  <span>0 – 60</span>
-                  <span style={{ color: '#4ade80' }}>
-                    −{(selectedCar.base.zeroToSixty - stats.zeroToSixty).toFixed(1)}s
+                  <span>0–60</span>
+                  <span className={styles.pos}>
+                    −{(spec.zeroToSixty - activeZero).toFixed(1)}s
                   </span>
                 </div>
+                {delta && (
+                  <div className={styles.deltaRow}>
+                    <span>TOP SPEED</span>
+                    <span className={styles.pos}>+{delta.topSpeed} mph</span>
+                  </div>
+                )}
               </div>
             )}
 
-            <button
-              className={styles.addBtn}
-              style={{ borderColor: accent, color: accent, background: `${accent}10` }}
-            >
-              + ADD TO MY GARAGE
-            </button>
+            <div className={styles.apiNote}>
+              Data via <a href="https://www.carqueryapi.com" target="_blank" rel="noreferrer">CarQuery API</a>
+            </div>
           </div>
 
         </div>

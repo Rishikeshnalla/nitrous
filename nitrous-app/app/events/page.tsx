@@ -1,11 +1,14 @@
 'use client'
+
 import Link from 'next/link'
 import { useState, useEffect } from 'react'
 import Nav from '@/components/Nav'
 import { getEvents, setReminder } from '@/lib/api'
 import styles from './events.module.css'
 
-const cats = ['all', 'motorsport', 'offroad', 'water', 'air']
+// Configuration
+const cats = ['all', 'motorsport', 'offroad', 'water', 'air'] as const
+type Category = (typeof cats)[number]
 
 const catColors: Record<string, string> = {
   motorsport: 'cyan',
@@ -21,21 +24,49 @@ const catIcons: Record<string, string> = {
   air: '🪂',
 }
 
+// Interfaces
+interface Event {
+  id: string
+  title: string
+  category: string
+  location: string
+  date: string
+  time?: string
+  isLive: boolean
+  price?: string
+  viewers?: string
+}
+
 const getAccentColor = (category: string): string => {
-  const color = catColors[category] || 'cyan'
+  const color = catColors[category.toLowerCase()] || 'cyan'
   return color.charAt(0).toUpperCase() + color.slice(1)
 }
 
 export default function EventsPage() {
-  const [allEvents, setAllEvents] = useState<any[]>([])
-  const [filter, setFilter] = useState('all')
+  // State
+  const [allEvents, setAllEvents] = useState<Event[]>([])
+  const [filter, setFilter] = useState<Category>('all')
   const [liveOnly, setLiveOnly] = useState(false)
   const [remindingId, setRemindingId] = useState<string | null>(null)
 
+  // Fetch Data
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const events = await getEvents()
+        setAllEvents(events)
+      } catch (error) {
+        console.error('Failed to fetch events:', error)
+      }
+    }
+    fetchData()
+  }, [])
+
+  // Helpers
   const formatEventDate = (value: string): string => {
     const dateOnly = value.includes('T') ? value.split('T')[0] : value
     const parsed = new Date(`${dateOnly}T00:00:00Z`)
-    if (Number.isNaN(parsed.getTime())) return value
+    if (isNaN(parsed.getTime())) return value
 
     return new Intl.DateTimeFormat('en-US', {
       month: 'long',
@@ -47,7 +78,7 @@ export default function EventsPage() {
 
   const formatEventTime = (value: string): string => {
     const parsed = new Date(value)
-    if (Number.isNaN(parsed.getTime())) return value
+    if (isNaN(parsed.getTime())) return value
 
     const offsetMatch = value.match(/([+-])(\d{2}):(\d{2})$/)
     const offsetMinutes = offsetMatch
@@ -71,29 +102,16 @@ export default function EventsPage() {
     return `${timePart} (UTC${sign}${hours}${minutes === '00' ? '' : `:${minutes}`})`
   }
 
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const events = await getEvents()
-        setAllEvents(events)
-      } catch (error) {
-        console.error('Failed to fetch events:', error)
-      }
-    }
-    fetchData()
-  }, [])
-
   const handleSetReminder = async (eventId: string) => {
     const token = localStorage.getItem('authToken')
     if (!token) {
-      globalThis.location.href = '/login'
+      window.location.href = '/login'
       return
     }
 
     setRemindingId(eventId)
     try {
       await setReminder(eventId, token)
-      console.log('Reminder set for event:', eventId)
     } catch (error) {
       console.error('Failed to set reminder:', error)
     } finally {
@@ -101,10 +119,11 @@ export default function EventsPage() {
     }
   }
 
+  // Filtered Results
   const filtered = allEvents.filter((e) => {
-    if (liveOnly && !e.isLive) return false
-    if (filter === 'all') return true
-    return e.category === filter
+    const matchesLive = liveOnly ? e.isLive : true
+    const matchesCat = filter === 'all' ? true : e.category.toLowerCase() === filter.toLowerCase()
+    return matchesLive && matchesCat
   })
 
   return (
@@ -115,11 +134,10 @@ export default function EventsPage() {
           <div>
             <div className={styles.headerTag}>/ EVENTS</div>
             <h1 className={styles.pageTitle}>ALL EVENTS</h1>
-            <p className={styles.pageSubtitle}>Upcoming races, qualifiers, and championships worldwide</p>
+            <p className={styles.pageSubtitle}>Upcoming races and championships worldwide</p>
           </div>
         </div>
 
-        {/* Filters */}
         <div className={styles.filterBar}>
           <div className={styles.catFilters}>
             {cats.map((cat) => (
@@ -128,7 +146,7 @@ export default function EventsPage() {
                 className={`${styles.catBtn} ${filter === cat ? styles.catBtnActive : ''}`}
                 onClick={() => setFilter(cat)}
               >
-                {cat === 'all' ? 'ALL' : `${catIcons[cat]} ${cat.toUpperCase()}`}
+                {cat === 'all' ? 'ALL' : `${catIcons[cat] || ''} ${cat.toUpperCase()}`}
               </button>
             ))}
           </div>
@@ -141,23 +159,20 @@ export default function EventsPage() {
           </button>
         </div>
 
-        {/* Count */}
         <div className={styles.countBar}>
           <span className={styles.countTxt}>
             {filtered.length} event{filtered.length === 1 ? '' : 's'}
           </span>
         </div>
 
-        {/* Events Grid */}
         <div className={styles.eventsGrid}>
           {filtered.map((event) => (
             <div key={event.id} className={`${styles.eventCard} ${event.isLive ? styles.eventCardLive : ''}`}>
-              {/* Color accent top */}
               <div className={`${styles.cardAccent} ${styles[`cardAccent${getAccentColor(event.category)}`]}`}></div>
 
               <div className={styles.cardTop}>
                 <div className={styles.cardCat}>
-                  <span>{catIcons[event.category]}</span>
+                  <span>{catIcons[event.category.toLowerCase()]}</span>
                   <span>{event.category.toUpperCase()}</span>
                 </div>
                 {event.isLive ? (
@@ -183,12 +198,6 @@ export default function EventsPage() {
                     {event.time ? formatEventTime(event.time) : 'N/A'}
                   </span>
                 </div>
-                {event.viewers && (
-                  <div className={styles.cardDate}>
-                    <span className={styles.cardDateLabel}>WATCHING</span>
-                    <span className={styles.cardDateVal}>{event.viewers}</span>
-                  </div>
-                )}
               </div>
 
               <div className={styles.cardActions}>
