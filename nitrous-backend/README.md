@@ -132,6 +132,7 @@ DELETE /api/reminders/:id       Delete reminder
 POST   /api/orders              Create order
 GET    /api/orders              List my orders
 GET    /api/orders/:id          Get my order by ID
+DELETE /api/orders/:id          Cancel order
 ```
 
 ## Authentication
@@ -222,6 +223,10 @@ curl http://localhost:8080/api/orders \
 
 # Get my order by ID
 curl http://localhost:8080/api/orders/ORDER_ID \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN"
+
+# Cancel order
+curl -X DELETE http://localhost:8080/api/orders/ORDER_ID \
   -H "Authorization: Bearer YOUR_JWT_TOKEN"
 ```
 

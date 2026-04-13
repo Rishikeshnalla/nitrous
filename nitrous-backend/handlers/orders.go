@@ -19,16 +19,21 @@ func CreateOrder(c *gin.Context) {
 		return
 	}
 
-	var total float64
-	for i, item := range req.Items {
-		m, found := database.FindMerchByID(item.MerchID)
-		if !found {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Merch item not found: " + item.MerchID})
-			return
+	database.Mu.RLock()
+	var merchItem *models.MerchItem
+
+	for _, item := range database.MerchItems {
+		if item.ID == req.MerchItemID {
+			itemCopy := item
+			merchItem = &itemCopy
+			break
 		}
-		req.Items[i].Name = m.Name
-		req.Items[i].Price = m.Price
-		total += m.Price * float64(item.Quantity)
+	}
+	database.Mu.RUnlock()
+
+	if merchItem == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Merch item not found"})
+		return
 	}
 
 	order := models.Order{
@@ -39,14 +44,35 @@ func CreateOrder(c *gin.Context) {
 		Status:    "pending",
 		CreatedAt: time.Now(),
 	}
-	database.AppendOrder(order)
+
+	database.Mu.Lock()
+	database.Orders = append(database.Orders, order)
+	database.Mu.Unlock()
 
 	c.JSON(http.StatusCreated, gin.H{"message": "Order placed successfully", "order": order})
 }
 
 func GetMyOrders(c *gin.Context) {
-	orders := database.GetOrdersByUser(c.GetString("userID"))
-	c.JSON(http.StatusOK, gin.H{"orders": orders, "count": len(orders)})
+	userID, exists := c.Get("userID")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
+		return
+	}
+
+	database.Mu.RLock()
+	defer database.Mu.RUnlock()
+
+	var orders []models.Order
+	for _, order := range database.Orders {
+		if order.UserID == userID.(string) {
+			orders = append(orders, order)
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"orders": orders,
+		"count":  len(orders),
+	})
 }
 
 func GetOrderByID(c *gin.Context) {
@@ -55,9 +81,59 @@ func GetOrderByID(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Order not found"})
 		return
 	}
-	if !owned {
-		c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
+
+	orderID := c.Param("id")
+	database.Mu.RLock()
+
+	for _, order := range database.Orders {
+		if order.ID == orderID {
+			if order.UserID != userID.(string) {
+				database.Mu.RUnlock()
+				c.JSON(http.StatusForbidden, gin.H{"error": "Forbidden"})
+				return
+			}
+
+			database.Mu.RUnlock()
+			c.JSON(http.StatusOK, order)
+			return
+		}
+	}
+	database.Mu.RUnlock()
+
+	c.JSON(http.StatusNotFound, gin.H{"error": "Order not found"})
+}
+
+// CancelOrder cancels an order owned by the authenticated user.
+func CancelOrder(c *gin.Context) {
+	userID, exists := c.Get("userID")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
 		return
 	}
-	c.JSON(http.StatusOK, order)
+
+	orderID := c.Param("id")
+	database.Mu.Lock()
+
+	for i, order := range database.Orders {
+		if order.ID == orderID {
+			if order.UserID != userID.(string) {
+				database.Mu.Unlock()
+				c.JSON(http.StatusForbidden, gin.H{"error": "Forbidden"})
+				return
+			}
+
+			if order.Status == "cancelled" {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "Order already cancelled"})
+				return
+			}
+
+			database.Orders[i].Status = "cancelled"
+			database.Mu.Unlock()
+			c.JSON(http.StatusOK, database.Orders[i])
+			return
+		}
+	}
+	database.Mu.Unlock()
+
+	c.JSON(http.StatusNotFound, gin.H{"error": "Order not found"})
 }

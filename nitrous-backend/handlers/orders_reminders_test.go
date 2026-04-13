@@ -119,6 +119,46 @@ func TestGetOrderByIDEndpoint(t *testing.T) {
 	}
 }
 
+func TestCancelOrderEndpoint(t *testing.T) {
+	setupHandlersTestEnv()
+	database.Orders = []models.Order{
+		{ID: "o1", UserID: "user-1", MerchItemID: "m1", Quantity: 1, TotalPrice: 10, Status: "created"},
+		{ID: "o2", UserID: "user-2", MerchItemID: "m2", Quantity: 1, TotalPrice: 20, Status: "created"},
+	}
+
+	r := gin.New()
+	r.DELETE("/orders/:id", middleware.AuthMiddleware(), CancelOrder)
+
+	w := performJSONRequest(r, http.MethodDelete, "/orders/o1", nil, "")
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 unauthorized, got %d", w.Code)
+	}
+
+	token := makeToken(t, "user-1")
+	w = performJSONRequest(r, http.MethodDelete, "/orders/o1", nil, token)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 for own order cancel, got %d", w.Code)
+	}
+
+	var order models.Order
+	if err := json.Unmarshal(w.Body.Bytes(), &order); err != nil {
+		t.Fatalf("failed to decode order: %v", err)
+	}
+	if order.Status != "cancelled" {
+		t.Fatalf("expected order status cancelled, got %s", order.Status)
+	}
+
+	w = performJSONRequest(r, http.MethodDelete, "/orders/o2", nil, token)
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 for other user's order, got %d", w.Code)
+	}
+
+	w = performJSONRequest(r, http.MethodDelete, "/orders/nope", nil, token)
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 for missing order, got %d", w.Code)
+	}
+}
+
 func TestSetReminderEndpoint(t *testing.T) {
 	setupHandlersTestEnv()
 	database.Events = []models.Event{sampleEvent("event-1")}

@@ -17,9 +17,10 @@ func main() {
 	database.InitDB()
 	defer database.CloseDB()
 
-	go handlers.RunHub()
-	go handlers.SimulateTelemetry() // swap for handlers.PollOpenF1() once live data is wired
+	// Start external provider integrations (Jolpica, OpenF1, TheSportsDB)
+	handlers.StartExternalDataIntegration()
 
+	// Create Gin router
 	r := gin.Default()
 
 	r.Use(cors.New(cors.Config{
@@ -76,11 +77,11 @@ func main() {
 		}
 
 		orders := api.Group("/orders")
-		orders.Use(middleware.AuthMiddleware())
 		{
-			orders.POST("", handlers.CreateOrder)
-			orders.GET("", handlers.GetMyOrders)
-			orders.GET("/:id", handlers.GetOrderByID)
+			orders.GET("", middleware.AuthMiddleware(), handlers.GetMyOrders)
+			orders.POST("", middleware.AuthMiddleware(), handlers.CreateOrder)
+			orders.GET("/:id", middleware.AuthMiddleware(), handlers.GetOrderByID)
+			orders.DELETE("/:id", middleware.AuthMiddleware(), handlers.CancelOrder)
 		}
 
 		auth := api.Group("/auth")

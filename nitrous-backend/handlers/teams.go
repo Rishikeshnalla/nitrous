@@ -11,19 +11,99 @@ import (
 )
 
 func GetTeams(c *gin.Context) {
-	ts := database.GetTeams()
-	c.JSON(http.StatusOK, gin.H{"teams": ts, "count": len(ts)})
+	database.Mu.RLock()
+	defer database.Mu.RUnlock()
+
+	c.JSON(http.StatusOK, gin.H{
+		"teams": database.Teams,
+		"count": len(database.Teams),
+	})
 }
 
 func GetTeamByID(c *gin.Context) {
-	team, found := database.FindTeamByID(c.Param("id"))
-	if !found {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Team not found"})
-		return
+	id := c.Param("id")
+
+	database.Mu.RLock()
+	defer database.Mu.RUnlock()
+
+	for _, team := range database.Teams {
+		if team.ID == id {
+			c.JSON(http.StatusOK, team)
+			return
+		}
 	}
-	c.JSON(http.StatusOK, team)
+
+	c.JSON(http.StatusNotFound, gin.H{"error": "Team not found"})
 }
 
+// CreateTeam creates a new team (admin only)
+func CreateTeam(c *gin.Context) {
+	var team models.Team
+
+	if err := c.ShouldBindJSON(&team); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	team.ID = uuid.New().String()
+	team.CreatedAt = time.Now()
+	team.Followers = []string{}
+	team.FollowersCount = 0
+
+	database.Mu.Lock()
+	defer database.Mu.Unlock()
+
+	database.Teams = append(database.Teams, team)
+	c.JSON(http.StatusCreated, team)
+}
+
+// UpdateTeam updates an existing team (admin only)
+func UpdateTeam(c *gin.Context) {
+	id := c.Param("id")
+
+	var updated models.Team
+	if err := c.ShouldBindJSON(&updated); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	database.Mu.Lock()
+	defer database.Mu.Unlock()
+
+	for i, team := range database.Teams {
+		if team.ID == id {
+			updated.ID = id
+			updated.CreatedAt = team.CreatedAt
+			updated.Followers = team.Followers
+			updated.FollowersCount = team.FollowersCount
+			database.Teams[i] = updated
+			c.JSON(http.StatusOK, updated)
+			return
+		}
+	}
+
+	c.JSON(http.StatusNotFound, gin.H{"error": "Team not found"})
+}
+
+// DeleteTeam deletes a team (admin only)
+func DeleteTeam(c *gin.Context) {
+	id := c.Param("id")
+
+	database.Mu.Lock()
+	defer database.Mu.Unlock()
+
+	for i, team := range database.Teams {
+		if team.ID == id {
+			database.Teams = append(database.Teams[:i], database.Teams[i+1:]...)
+			c.JSON(http.StatusOK, gin.H{"message": "Team deleted"})
+			return
+		}
+	}
+
+	c.JSON(http.StatusNotFound, gin.H{"error": "Team not found"})
+}
+
+// FollowTeam adds the authenticated user to the team's followers
 func FollowTeam(c *gin.Context) {
 	teamID := c.Param("id")
 	userID := c.GetString("userID")
@@ -33,22 +113,34 @@ func FollowTeam(c *gin.Context) {
 		return
 	}
 
-	if database.FollowExists(userID, teamID) {
-		c.JSON(http.StatusConflict, gin.H{"error": "Already following this team"})
-		return
+	id := c.Param("id")
+
+	database.Mu.Lock()
+	defer database.Mu.Unlock()
+
+	for i, team := range database.Teams {
+		if team.ID == id {
+			// check if already following
+			uid := userID.(string)
+			for _, f := range team.Followers {
+				if f == uid {
+					c.JSON(http.StatusBadRequest, gin.H{"error": "Already following"})
+					return
+				}
+			}
+
+			database.Teams[i].Followers = append(database.Teams[i].Followers, uid)
+			database.Teams[i].FollowersCount = len(database.Teams[i].Followers)
+
+			c.JSON(http.StatusOK, gin.H{"message": "Team followed", "team": database.Teams[i]})
+			return
+		}
 	}
 
-	database.AppendFollow(models.TeamFollow{
-		ID:        uuid.New().String(),
-		UserID:    userID,
-		TeamID:    teamID,
-		CreatedAt: time.Now(),
-	})
-
-	following, _ := database.IncrementFollowing(teamID)
-	c.JSON(http.StatusOK, gin.H{"message": "Now following team", "following": following})
+	c.JSON(http.StatusNotFound, gin.H{"error": "Team not found"})
 }
 
+// UnfollowTeam removes the authenticated user from the team's followers
 func UnfollowTeam(c *gin.Context) {
 	teamID := c.Param("id")
 	userID := c.GetString("userID")
@@ -58,10 +150,27 @@ func UnfollowTeam(c *gin.Context) {
 		return
 	}
 
-	if !database.DeleteFollow(userID, teamID) {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Follow record not found"})
-		return
-	}
+	id := c.Param("id")
+	uid := userID.(string)
+
+	database.Mu.Lock()
+	defer database.Mu.Unlock()
+
+	for i, team := range database.Teams {
+		if team.ID == id {
+			// find follower index
+			idx := -1
+			for j, f := range team.Followers {
+				if f == uid {
+					idx = j
+					break
+				}
+			}
+
+			if idx == -1 {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "Not following"})
+				return
+			}
 
 	following, _ := database.DecrementFollowing(teamID)
 	c.JSON(http.StatusOK, gin.H{"message": "Unfollowed team", "following": following})

@@ -19,9 +19,15 @@ func Register(c *gin.Context) {
 		return
 	}
 
-	if _, exists := database.FindUserByEmail(req.Email); exists {
-		c.JSON(http.StatusConflict, gin.H{"error": "Email already registered"})
-		return
+	database.Mu.Lock()
+	defer database.Mu.Unlock()
+
+	// Check if user already exists
+	for _, user := range database.Users {
+		if user.Email == req.Email {
+			c.JSON(http.StatusConflict, gin.H{"error": "Email already registered"})
+			return
+		}
 	}
 
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
@@ -55,8 +61,19 @@ func Login(c *gin.Context) {
 		return
 	}
 
-	foundUser, exists := database.FindUserByEmail(req.Email)
-	if !exists {
+	database.Mu.RLock()
+	defer database.Mu.RUnlock()
+
+	// Find user
+	var foundUser *models.User
+	for _, user := range database.Users {
+		if user.Email == req.Email {
+			foundUser = &user
+			break
+		}
+	}
+
+	if foundUser == nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid credentials"})
 		return
 	}
@@ -82,10 +99,15 @@ func GetCurrentUser(c *gin.Context) {
 		return
 	}
 
-	user, found := database.FindUserByID(userID.(string))
-	if !found {
-		c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
-		return
+	database.Mu.RLock()
+	defer database.Mu.RUnlock()
+
+	// Find user
+	for _, user := range database.Users {
+		if user.ID == userID.(string) {
+			c.JSON(http.StatusOK, user)
+			return
+		}
 	}
 
 	c.JSON(http.StatusOK, user)
