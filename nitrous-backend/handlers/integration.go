@@ -129,7 +129,7 @@ func syncSportsDBTeams() error {
 	base := strings.TrimRight(config.AppConfig.SportsDBBaseURL, "/")
 	key := strings.TrimSpace(config.AppConfig.SportsDBAPIKey)
 	if key == "" {
-		key = "3"
+		key = "123"
 	}
 
 	leagues := []string{

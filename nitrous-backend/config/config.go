@@ -45,7 +45,7 @@ func LoadConfig() {
 		JolpicaBaseURL:         getEnv("JOLPICA_BASE_URL", "https://api.jolpi.ca/ergast/f1"),
 		OpenF1BaseURL:          getEnv("OPENF1_BASE_URL", "https://api.openf1.org/v1"),
 		SportsDBBaseURL:        getEnv("SPORTSDB_BASE_URL", "https://www.thesportsdb.com/api/v1/json"),
-		SportsDBAPIKey:         getEnv("SPORTSDB_API_KEY", "3"),
+		SportsDBAPIKey:         getEnv("SPORTSDB_API_KEY", "123"),
 		JolpicaSyncInterval:    getEnv("JOLPICA_SYNC_INTERVAL", "24h"),
 		OpenF1ActiveInterval:   getEnv("OPENF1_ACTIVE_INTERVAL", "5s"),
 		OpenF1IdleInterval:     getEnv("OPENF1_IDLE_INTERVAL", "1h"),
